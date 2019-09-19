@@ -4,6 +4,10 @@ pub fn xor_bytes(xs: &[u8], ys: &[u8]) -> Vec<u8> {
     xs.into_iter().zip(ys).map(|(x, y)| x ^ y).collect()
 }
 
+pub fn repeating_xor(xs: &[u8], key: &[u8]) -> Vec<u8> {
+    xs.iter().zip(key.iter().cycle()).map(|(x, k)| x ^ k).collect()
+}
+
 pub fn decode_xor_english(bytes: &[u8]) -> Option<String> {
     let key = infer_xor_key_english(bytes)?;
     let decoded = decode_xor_bytes(bytes, key);
@@ -63,5 +67,16 @@ mod test {
         }
 
         assert!(decoded_lines.iter().any(|decoded| decoded.trim() == "Now that the party is jumping"));
+    }
+
+    #[test]
+    fn test_repeating_xor() {
+        let key = b"ICE";
+
+        let plaintext = b"Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal";
+        let expected_output = util::hex_str_into_bytes("0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f");
+        let output = repeating_xor(plaintext, key);
+        assert_eq!(output.len(), plaintext.len());
+        assert_eq!(output, expected_output);
     }
 }
