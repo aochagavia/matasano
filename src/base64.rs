@@ -15,6 +15,34 @@ pub fn encode(bytes: &[u8]) -> String {
     output
 }
 
+pub fn decode(bytes: &[u8]) -> Vec<u8> {
+    assert_eq!(bytes.len() % 4, 0);
+
+    let mut decoded = Vec::new();
+    for chunk in bytes.chunks(4) {
+        let s1 = decode_sextet(chunk[0]);
+        let s2 = decode_sextet(chunk[1]);
+        let s3 = decode_sextet(chunk[2]);
+        let s4 = decode_sextet(chunk[3]);
+
+        let b1 = (s1 << 2) | ((s2 & 0b0011_0000) >> 4);
+        let b2 = ((s2 & 0b0000_1111) << 4) | ((s3 & 0b0011_1100) >> 2);
+        let b3 = ((s3 & 0b0000_0011) << 6) | s4;
+
+        decoded.push(b1);
+        decoded.push(b2);
+        decoded.push(b3);
+    }
+
+    // Take padding into account
+    let padding = bytes.iter().rev().take(2).filter(|&&x| x == b'=').count();
+    for _ in 0..padding {
+        decoded.pop();
+    }
+
+    decoded
+}
+
 fn sextets(bytes: &[u8]) -> Vec<u8> {
     let mut output = Vec::new();
 
@@ -67,6 +95,25 @@ fn encode_sextet(sextet: u8) -> u8 {
     }
 }
 
+fn decode_sextet(character: u8) -> u8 {
+    match character {
+        b'A'..=b'Z' => character - b'A',
+        b'a'..=b'z' => character - b'a' + 26,
+        b'0'..=b'9' => character - b'0' + 52,
+        b'+' => 62,
+        b'/' => 63,
+        b'=' => 0,
+        c => unreachable!("Unknown char: {} ({})", c as char, c)
+    }
+}
+
+#[test]
+fn test_encode_decode_sextets() {
+    for x in 0..=63 {
+        assert_eq!(x, decode_sextet(encode_sextet(x)));
+    }
+}
+
 #[test]
 fn test_sextets() {
     let s = sextets(b"ManMan");
@@ -102,4 +149,25 @@ fn test_encode_padding() {
     let expected_output = "YXNkZg==";
     let output = encode(source_bytes);
     assert_eq!(output, expected_output);
+}
+
+#[test]
+fn test_encode_decode() {
+    // No padding
+    let source_bytes = b"asdfgh";
+    let output = decode(encode(source_bytes).as_bytes());
+    let output: &[u8] = &output;
+    assert_eq!(source_bytes, output);
+
+    // = of padding
+    let source_bytes = b"asdfg";
+    let output = decode(encode(source_bytes).as_bytes());
+    let output: &[u8] = &output;
+    assert_eq!(source_bytes, output);
+
+    // == of padding
+    let source_bytes = b"asd";
+    let output = decode(encode(source_bytes).as_bytes());
+    let output: &[u8] = &output;
+    assert_eq!(source_bytes, output);
 }
