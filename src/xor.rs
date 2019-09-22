@@ -38,7 +38,8 @@ pub fn infer_key_lengths(bytes: &[u8]) -> impl Iterator<Item=usize> {
 
 fn infer_xor_key_english(bytes: &[u8]) -> Option<u8> {
     // Try all possible keys and pick the one which most closely resembles the char distribution of the english language
-    use crate::histogram::{CharHistogram, OrdF32};
+    use crate::histogram::CharHistogram;
+    use crate::ordf32::OrdF32;
     let english_chars = CharHistogram::english();
     let minimum_alphabetic_length = (bytes.len() as f32 * 0.8) as usize;
     (0..=255)
