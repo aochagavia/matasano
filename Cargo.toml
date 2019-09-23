@@ -8,3 +8,4 @@ edition = "2018"
 
 [dependencies]
 openssl = "0.10.24"
+rand = "0.7.2"
