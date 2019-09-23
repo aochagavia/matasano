@@ -4,7 +4,7 @@ pub fn xor_bytes(xs: &[u8], ys: &[u8]) -> Vec<u8> {
     xs.into_iter().zip(ys).map(|(x, y)| x ^ y).collect()
 }
 
-pub fn repeating_xor(xs: &[u8], key: &[u8]) -> Vec<u8> {
+pub fn xor_ecb(xs: &[u8], key: &[u8]) -> Vec<u8> {
     xs.iter().zip(key.iter().cycle()).map(|(x, k)| x ^ k).collect()
 }
 
@@ -55,7 +55,7 @@ fn decode_xor_bytes(bytes: &[u8], key: u8) -> Vec<u8> {
     bytes.into_iter().map(|x| x ^ key).collect()
 }
 
-pub fn decrypt_repeating_xor(bytes: &[u8], keysize: usize) -> Option<String> {
+pub fn decrypt_xor_ecb(bytes: &[u8], keysize: usize) -> Option<String> {
     // Transpose blocks
     let mut transposed_blocks = vec![Vec::new(); keysize];
     for (byte_no, &byte) in bytes.iter().enumerate() {
@@ -109,12 +109,12 @@ mod test {
     }
 
     #[test]
-    fn test_repeating_xor() {
+    fn test_xor_ecb() {
         let key = b"ICE";
 
         let plaintext = b"Burning 'em, if you ain't quick and nimble\nI go crazy when I hear a cymbal";
         let expected_output = util::hex_str_into_bytes("0b3637272a2b2e63622c2e69692a23693a2a3c6324202d623d63343c2a26226324272765272a282b2f20430a652e2c652a3124333a653e2b2027630c692b20283165286326302e27282f");
-        let output = repeating_xor(plaintext, key);
+        let output = xor_ecb(plaintext, key);
         assert_eq!(output.len(), plaintext.len());
         assert_eq!(output, expected_output);
     }
@@ -128,7 +128,7 @@ mod test {
             .collect();
 
         for inferred_length in infer_key_lengths(&ciphertext) {
-            if let Some(decrypted_key) = decrypt_repeating_xor(&ciphertext, inferred_length) {
+            if let Some(decrypted_key) = decrypt_xor_ecb(&ciphertext, inferred_length) {
                 assert_eq!(decrypted_key, "Terminator x: Bring the noise");
             }
         }
@@ -137,17 +137,17 @@ mod test {
     #[test]
     fn test_infer_key_length() {
         let key = b"secretkey";
-        let ciphertext = repeating_xor(PLAINTEXT, key);
+        let ciphertext = xor_ecb(PLAINTEXT, key);
         let mut inferred_lengths = infer_key_lengths(&ciphertext);
         assert!(inferred_lengths.any(|keysize| keysize == key.len()));
     }
 
     #[test]
-    fn test_decrypt_repeating_xor() {
+    fn test_decrypt_xor_ecb() {
         let key = "secretkey";
-        let ciphertext = repeating_xor(PLAINTEXT, key.as_bytes());
+        let ciphertext = xor_ecb(PLAINTEXT, key.as_bytes());
         let keysize = key.len();
-        let decrypted_key = decrypt_repeating_xor(&ciphertext, keysize).unwrap();
+        let decrypted_key = decrypt_xor_ecb(&ciphertext, keysize).unwrap();
         assert_eq!(decrypted_key, key);
     }
 }
