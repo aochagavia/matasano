@@ -6,6 +6,17 @@ pub fn decrypt_aes_ecb(ciphertext: &[u8], key: &[u8]) -> Vec<u8> {
     decrypt(cipher, key, None, ciphertext).unwrap()
 }
 
+pub fn decrypt_aes_ecb_no_padding(ciphertext: &[u8], key: &[u8]) -> Vec<u8> {
+    let cipher = Cipher::aes_128_ecb();
+    let mut crypter = Crypter::new(cipher, Mode::Decrypt, key, None).unwrap();
+    crypter.pad(false);
+    let mut plaintext = vec![0; ciphertext.len() + 16];
+    crypter.update(ciphertext, &mut plaintext).unwrap();
+    assert_eq!(plaintext.len() - 16, ciphertext.len());
+    plaintext.truncate(plaintext.len() - 16);
+    plaintext
+}
+
 pub fn encrypt_aes_ecb_no_padding(plaintext: &[u8], key: &[u8]) -> Vec<u8> {
     let cipher = Cipher::aes_128_ecb();
     let mut crypter = Crypter::new(cipher, Mode::Encrypt, key, None).unwrap();
@@ -18,7 +29,25 @@ pub fn encrypt_aes_ecb_no_padding(plaintext: &[u8], key: &[u8]) -> Vec<u8> {
 }
 
 pub fn decrypt_aes_cbc(ciphertext: &[u8], key: &[u8], iv: &[u8]) -> Vec<u8> {
-    unimplemented!()
+    assert_eq!(iv.len(), 16);
+
+    let mut plaintext = Vec::new();
+    let mut prev_block = iv;
+    for block in ciphertext.chunks(16) {
+        // Decrypt
+        // XOR against previous block
+        let decrypted = decrypt_aes_ecb_no_padding(block, key);
+        let xorred = crate::xor::xor_bytes(&prev_block, &decrypted);
+        plaintext.extend_from_slice(&xorred);
+
+        prev_block = block;
+    }
+
+    // Remove padding
+    let padding = plaintext[plaintext.len() - 1];
+    plaintext.truncate(plaintext.len() - padding as usize);
+
+    plaintext
 }
 
 pub fn encrypt_aes_cbc(plaintext: &[u8], key: &[u8], iv: &[u8]) -> Vec<u8> {
@@ -74,7 +103,7 @@ fn test_set_1_challenge_8() {
 }
 
 #[test]
-fn test_aes_cbc() {
+fn test_encrypt_aes_cbc() {
     let plaintext = b"You'll never guess the contents of this string! Muahaha";
     let key = b"YELLOW SUBMARINE";
     let iv = b"1234123412341234";
@@ -84,4 +113,15 @@ fn test_aes_cbc() {
     let expected_ciphertext = encrypt(cipher, key, Some(iv), plaintext).unwrap();
 
     assert_eq!(ciphertext, expected_ciphertext);
+}
+
+#[test]
+fn test_encrypt_decrypt_aes_cbc() {
+    let plaintext: &[u8] = b"You'll never guess the contents of this string! Muahaha";
+    let key = b"YELLOW SUBMARINE";
+    let iv = b"1234123412341234";
+    let ciphertext = encrypt_aes_cbc(plaintext, key, iv);
+    let decrypted = decrypt_aes_cbc(&ciphertext, key, iv);
+
+    assert_eq!(decrypted, plaintext);
 }
