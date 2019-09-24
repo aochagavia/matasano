@@ -88,20 +88,18 @@ pub fn count_repetitions(bytes: &[u8]) -> u32 {
     freq.iter().filter(|&(_, &v)| v > 1).map(|(_, v)| v).sum()
 }
 
-pub fn break_aes_ecb() -> Vec<u8> {
-    use rand::RngCore;
-
-    let mut random_key = vec![0; 16];
-    rand::thread_rng().fill_bytes(&mut random_key);
-
+// Note: this function assumes that the encryption function is deterministic
+pub fn detect_block_size_and_padding_bytes<F>(encrypt: F) -> (usize, usize)
+where F: Fn(&[u8]) -> Vec<u8> {
     // We can discover the block size even without knowing which cipher it is by seeing
     // the effect of our input on the padding
-    let len = encrypt_aes_ecb_with_appendix(b"", &random_key).len();
+
+    let len = encrypt(b"").len();
     let mut block_size = 0;
     let mut padding_bytes = 0;
     for added_bytes in 1.. {
         let bytes = vec![0; added_bytes];
-        let new_len = encrypt_aes_ecb_with_appendix(&bytes, &random_key).len();
+        let new_len = encrypt(&bytes).len();
         if new_len > len {
             // New block added!
             padding_bytes = added_bytes;
@@ -110,107 +108,14 @@ pub fn break_aes_ecb() -> Vec<u8> {
         }
     }
 
-    assert_eq!(block_size, 16); // Sanity check
+    (block_size, padding_bytes)
+}
 
-    // Detect that this is indeed a case of ECB
+pub fn is_ecb<F>(encrypt: F, block_size: usize) -> bool
+where F: Fn(&[u8]) -> Vec<u8> {
     let plaintext = vec![b'A'; block_size * 6];
-    let ciphertext = encrypt_aes_ecb_with_appendix(&plaintext, &random_key);
-    if count_repetitions(&ciphertext) < 4 {
-        panic!("Not ECB!");
-    }
-
-    // Find the length of the secret text
-    let secret_text = encrypt_aes_ecb_with_appendix(b"", &random_key);
-    let secret_text_len = secret_text.len() - padding_bytes;
-    let input_len = secret_text_len + padding_bytes;
-
-    assert!(input_len % block_size == 0);
-
-    let mut discovered_bytes = Vec::new();
-    while discovered_bytes.len() < secret_text_len {
-        // Find all combinations for the last char
-        let mut input = vec![0; input_len - discovered_bytes.len() - 1];
-        input.extend_from_slice(&discovered_bytes);
-        input.push(0);
-
-        let mut map = std::collections::HashMap::new();
-        for x in 0..=255 {
-            input[input_len - 1] = x;
-            let encrypted = encrypt_aes_ecb_with_appendix(&input, &random_key);
-
-            let block = encrypted[input_len - block_size..input_len].to_owned();
-            assert_eq!(block.len(), block_size); // Sanity check
-            map.insert(block, x);
-        }
-
-        // Craft an input block that allows an undiscovered byte to be included in the block
-        let input = vec![0; input_len - discovered_bytes.len() - 1];
-        let encrypted = encrypt_aes_ecb_with_appendix(&input, &random_key);
-        let discovered_byte = map[&encrypted[input_len - block_size..input_len]];
-        discovered_bytes.push(discovered_byte);
-    }
-
-    discovered_bytes
-}
-
-pub fn encrypt_aes_ecb_with_appendix(plaintext: &[u8], key: &[u8]) -> Vec<u8> {
-    let mut plaintext = plaintext.to_owned();
-    let appendix = crate::base64::decode(b"Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK");
-    plaintext.extend_from_slice(&appendix);
-
-    encrypt_aes_ecb(&plaintext, key)
-}
-
-pub fn aes_oracle() -> (BlockCipherMode, BlockCipherMode) {
-    let plaintext = vec![b'A'; 16 * 6];
-    let (ciphertext, mode) = encrypt_aes_cbc_or_ecb(&plaintext);
-
-    // If the encryption function is using ECB, there will be at least
-    // 4 repeated blocks
-    if count_repetitions(&ciphertext) >= 4 {
-        (BlockCipherMode::ECB, mode)
-    } else {
-        (BlockCipherMode::CBC, mode)
-    }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum BlockCipherMode {
-    ECB,
-    CBC
-}
-
-fn encrypt_aes_cbc_or_ecb(plaintext: &[u8]) -> (Vec<u8>, BlockCipherMode) {
-    use rand::{RngCore, Rng};
-
-    // Generate random key
-    let mut key = vec![0; 16];
-    let mut rng = rand::thread_rng();
-    rng.fill_bytes(&mut key);
-
-    // Modify the plaintext
-    let prepend_count: usize = rng.gen_range(5, 11);
-    let mut prepend_bytes = vec![0; prepend_count];
-    rng.fill_bytes(&mut prepend_bytes);
-
-    let append_count: usize = rng.gen_range(5, 11);
-    let mut append_bytes = vec![0; append_count];
-    rng.fill_bytes(&mut append_bytes);
-
-    let mut new_plaintext = prepend_bytes;
-    new_plaintext.extend_from_slice(plaintext);
-    new_plaintext.extend_from_slice(&append_bytes);
-
-    // Encrypt!
-    if rng.gen_bool(0.5) {
-        // CBC
-        let mut iv = vec![0; 16];
-        rng.fill_bytes(&mut iv);
-        (encrypt_aes_cbc(&new_plaintext, &key, &iv), BlockCipherMode::CBC)
-    } else {
-        // ECB
-        (encrypt_aes_ecb(&new_plaintext, &key), BlockCipherMode::ECB)
-    }
+    let ciphertext = encrypt(&plaintext);
+    count_repetitions(&ciphertext) >= 4
 }
 
 #[test]
@@ -256,17 +161,3 @@ fn test_encrypt_decrypt_aes_cbc() {
     assert_eq!(decrypted, plaintext);
 }
 
-#[test]
-fn test_detect_aes_ecb() {
-    for _ in 0..20 {
-        let (detected, real) = aes_oracle();
-        assert_eq!(detected, real);
-    }
-}
-
-#[test]
-fn test_break_aes_ecb() {
-    let secret = break_aes_ecb();
-    let expected = crate::base64::decode(b"Um9sbGluJyBpbiBteSA1LjAKV2l0aCBteSByYWctdG9wIGRvd24gc28gbXkgaGFpciBjYW4gYmxvdwpUaGUgZ2lybGllcyBvbiBzdGFuZGJ5IHdhdmluZyBqdXN0IHRvIHNheSBoaQpEaWQgeW91IHN0b3A/IE5vLCBJIGp1c3QgZHJvdmUgYnkK");
-    assert_eq!(secret, expected)
-}
