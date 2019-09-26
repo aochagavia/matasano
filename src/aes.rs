@@ -111,11 +111,99 @@ where F: Fn(&[u8]) -> Vec<u8> {
     (block_size, padding_bytes)
 }
 
+// Returns how many bytes we need to add to a prefix to start a new block
+pub fn detect_prefix_length<F>(encrypt: F) -> usize
+where F: Fn(&[u8]) -> Vec<u8> {
+    // Note: this function assumes a block size of 16
+
+    let mut input = Vec::new();
+    let mut ciphertext: Vec<u8>;
+    let index = 'asd: loop {
+        ciphertext = encrypt(&input);
+        let blocks: Vec<_> = ciphertext.chunks(16).collect();
+        for (index, window) in blocks.windows(2).enumerate() {
+            if window[0] == window[1] {
+                break 'asd index;
+            }
+        }
+
+        input.push(0);
+    };
+
+    let bytes_to_get_new_block = input.len() - 32;
+    assert!(bytes_to_get_new_block <= 16);
+
+    index * 16 - bytes_to_get_new_block
+}
+
 pub fn is_ecb<F>(encrypt: F, block_size: usize) -> bool
 where F: Fn(&[u8]) -> Vec<u8> {
     let plaintext = vec![b'A'; block_size * 6];
     let ciphertext = encrypt(&plaintext);
     count_repetitions(&ciphertext) >= 4
+}
+
+pub fn decrypt_appendix<F>(encrypt: F) -> Vec<u8>
+where F: Fn(&[u8]) -> Vec<u8> {
+    let (block_size, _) = detect_block_size_and_padding_bytes(
+        |bytes| encrypt(bytes)
+    );
+
+    assert_eq!(block_size, 16); // Sanity check
+
+    // Detect that this is indeed a case of ECB
+    if !is_ecb(
+        |bytes| encrypt(bytes),
+        block_size) {
+        panic!("Not ECB!");
+    }
+
+    // Detect whether there is a prefix
+    let prefix_length = detect_prefix_length(|bytes| encrypt(bytes));
+    let prefix_bytes_before_next_block = block_size - (prefix_length % block_size);
+    let prefix_correction_bytes_len = if prefix_bytes_before_next_block == block_size { 0 } else { prefix_bytes_before_next_block };
+    let prefix_correction_bytes = vec![0; prefix_correction_bytes_len];
+    let ignored_prefix_bytes = prefix_length + prefix_correction_bytes_len;
+
+    // Detect padding bytes after correcting for the prefix
+    let (_, padding_bytes) = detect_block_size_and_padding_bytes(|bytes| {
+        let mut plaintext = prefix_correction_bytes.to_owned();
+        plaintext.extend_from_slice(&bytes);
+        encrypt(&plaintext)
+    });
+
+    // Find the length of the secret text
+    let secret_text = encrypt(&prefix_correction_bytes);
+    let secret_text_len = secret_text.len() - padding_bytes - ignored_prefix_bytes;
+    let input_len = secret_text_len + padding_bytes;
+
+    assert!(input_len % block_size == 0);
+
+    let mut discovered_bytes = Vec::new();
+    while discovered_bytes.len() < secret_text_len {
+        // Find all combinations for the last char
+        let mut input = vec![0; prefix_correction_bytes_len + input_len - discovered_bytes.len() - 1];
+        input.extend_from_slice(&discovered_bytes);
+        input.push(0);
+
+        let mut map = std::collections::HashMap::new();
+        for x in 0..=255 {
+            input[prefix_correction_bytes_len + input_len - 1] = x;
+            let encrypted = encrypt(&input);
+
+            let block = encrypted[ignored_prefix_bytes + input_len - block_size..ignored_prefix_bytes + input_len].to_owned();
+            assert_eq!(block.len(), block_size); // Sanity check
+            map.insert(block, x);
+        }
+
+        // Craft an input block that allows an undiscovered byte to be included in the block
+        let input = vec![0; prefix_correction_bytes_len + input_len - discovered_bytes.len() - 1];
+        let encrypted = encrypt(&input);
+        let discovered_byte = map[&encrypted[ignored_prefix_bytes + input_len - block_size..ignored_prefix_bytes + input_len]];
+        discovered_bytes.push(discovered_byte);
+    }
+
+    discovered_bytes
 }
 
 #[test]
