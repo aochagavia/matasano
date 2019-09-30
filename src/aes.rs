@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use openssl::symm::{Cipher, Crypter, Mode, encrypt, decrypt};
+use crate::pkcs7;
 
 pub fn decrypt_aes_ecb(ciphertext: &[u8], key: &[u8]) -> Vec<u8> {
     let cipher = Cipher::aes_128_ecb();
@@ -49,8 +50,7 @@ pub fn decrypt_aes_cbc(ciphertext: &[u8], key: &[u8], iv: &[u8]) -> Vec<u8> {
     }
 
     // Remove padding
-    let padding = plaintext[plaintext.len() - 1];
-    plaintext.truncate(plaintext.len() - padding as usize);
+    pkcs7::remove_padding(&mut plaintext);
 
     plaintext
 }
