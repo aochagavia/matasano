@@ -13,7 +13,7 @@ pub fn validate_padding(bytes: &[u8]) -> bool {
 
     let expected_padding_bytes = bytes[bytes.len() - 1];
 
-    if expected_padding_bytes > 16 {
+    if expected_padding_bytes > 16 || expected_padding_bytes == 0 {
         return false;
     }
 
