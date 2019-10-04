@@ -11,34 +11,27 @@ fn break_aes_cbc() -> (Vec<u8>, Vec<u8>) {
     assert!(ciphertext.len() % 16 == 0);
     assert!(ciphertext.len() >= 32);
 
-    // The code below should correctly decrypt the last block... Except it doesn't
+    let original_ciphertext = ciphertext.clone();
+
+    // Decrypt the last block
     let last_two_blocks_start = ciphertext.len() - 32;
     let decrypted = decrypt_block(&mut ciphertext[last_two_blocks_start..], &key, &iv);
 
-    // crate::pkcs7::remove_padding(&mut found);
-    println!("Original length: {}", original_plaintext.len());
-    crate::pkcs7::add_padding(&mut original_plaintext, 16);
-    println!("{}", String::from_utf8_lossy(&original_plaintext[last_two_blocks_start + 16..]));
+    crate::pkcs7::remove_padding(&mut decrypted);
+    println!("{}", String::from_utf8_lossy(&original_plaintext));
     println!("{}", String::from_utf8_lossy(&decrypted));
-    println!("{:?}", &original_plaintext[last_two_blocks_start + 16..]);
-    println!("{:?}", &iv);
-    println!("{:?}", decrypted); // We are not getting the padding right...
-    // println!("{:?}, {}", possible_bytes, definitive_value.unwrap());
 
-    // TODO: manipulate ciphertext, feed it to `provide_encrypted_cookie` and
-    // check whether everything is working
     // assert!(provide_encrypted_cookie(&ciphertext, &key, &iv));
 
     (original_plaintext, plaintext)
 }
 
 fn decrypt_block(ciphertext: &mut [u8], key: &[u8], iv: &[u8]) -> Vec<u8> {
+    let original_ciphertext = ciphertext.to_owned();
     let mut decrypted = Vec::new();
 
     for padding_bytes in 1..=16u8 {
         let i = 16 - padding_bytes as usize;
-
-        assert_eq!(decrypted.len(), padding_bytes - 1);
 
         // For all bytes we have already decrypted, configure them in such a way that we obtain the desired padding
         for (j, byte) in decrypted.iter().enumerate() {
@@ -81,7 +74,7 @@ fn decrypt_block(ciphertext: &mut [u8], key: &[u8], iv: &[u8]) -> Vec<u8> {
         assert_eq!(decrypted.len(), decrypted_len + 1);
     }
 
-    decrypted.into_iter().rev().collect()
+    decrypted.into_iter().rev().zip(original_ciphertext).map(|(x, y)| x ^ y).collect()
 }
 
 fn get_encrypted_cookie(key: &[u8], iv: &[u8]) -> (Vec<u8>, Vec<u8>) {
@@ -113,7 +106,7 @@ fn provide_encrypted_cookie(ciphertext: &[u8], key: &[u8], iv: &[u8]) -> bool {
 }
 
 #[test]
-fn test_break_aes_cbc_16() {
+fn test_break_aes_cbc_17() {
     let (plaintext, decrypted) = break_aes_cbc();
     assert_eq!(plaintext, decrypted);
 }
