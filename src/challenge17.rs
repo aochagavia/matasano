@@ -5,25 +5,31 @@ fn break_aes_cbc() -> (Vec<u8>, Vec<u8>) {
     rand::thread_rng().fill_bytes(&mut key);
     rand::thread_rng().fill_bytes(&mut iv);
 
-    let plaintext = Vec::new();
-    let (mut original_plaintext, mut ciphertext) = get_encrypted_cookie(&key, &iv);
+    let (original_plaintext, ciphertext) = get_encrypted_cookie(&key, &iv);
 
     assert!(ciphertext.len() % 16 == 0);
     assert!(ciphertext.len() >= 32);
 
-    let original_ciphertext = ciphertext.clone();
+    let mut extended_ciphertext = iv.to_owned();
+    extended_ciphertext.extend_from_slice(&ciphertext);
 
-    // Decrypt the last block
-    let last_two_blocks_start = ciphertext.len() - 32;
-    let decrypted = decrypt_block(&mut ciphertext[last_two_blocks_start..], &key, &iv);
+    // Decrypt the blocks!
+    let mut decrypted_blocks = Vec::new();
+    let mut offset = 32;
+    while offset <= extended_ciphertext.len() {
+        let start = extended_ciphertext.len() - offset;
+        let end = start + 32;
+        let mut cracking = (&extended_ciphertext[start..end]).to_owned();
+        let decrypted = decrypt_block(&mut cracking, &key, &iv);
+        decrypted_blocks.push(decrypted);
+        offset += 16;
 
+    }
+
+    let mut decrypted = decrypted_blocks.into_iter().rev().flat_map(|block| block).collect();
     crate::pkcs7::remove_padding(&mut decrypted);
-    println!("{}", String::from_utf8_lossy(&original_plaintext));
-    println!("{}", String::from_utf8_lossy(&decrypted));
 
-    // assert!(provide_encrypted_cookie(&ciphertext, &key, &iv));
-
-    (original_plaintext, plaintext)
+    (original_plaintext, decrypted)
 }
 
 fn decrypt_block(ciphertext: &mut [u8], key: &[u8], iv: &[u8]) -> Vec<u8> {
@@ -80,15 +86,15 @@ fn decrypt_block(ciphertext: &mut [u8], key: &[u8], iv: &[u8]) -> Vec<u8> {
 fn get_encrypted_cookie(key: &[u8], iv: &[u8]) -> (Vec<u8>, Vec<u8>) {
     let alternatives: &[&[u8]] = &[
         b"MDAwMDAwTm93IHRoYXQgdGhlIHBhcnR5IGlzIGp1bXBpbmc=",
-        // b"MDAwMDAxV2l0aCB0aGUgYmFzcyBraWNrZWQgaW4gYW5kIHRoZSBWZWdhJ3MgYXJlIHB1bXBpbic=",
-        // b"MDAwMDAyUXVpY2sgdG8gdGhlIHBvaW50LCB0byB0aGUgcG9pbnQsIG5vIGZha2luZw==",
-        // b"MDAwMDAzQ29va2luZyBNQydzIGxpa2UgYSBwb3VuZCBvZiBiYWNvbg==",
-        // b"MDAwMDA0QnVybmluZyAnZW0sIGlmIHlvdSBhaW4ndCBxdWljayBhbmQgbmltYmxl",
-        // b"MDAwMDA1SSBnbyBjcmF6eSB3aGVuIEkgaGVhciBhIGN5bWJhbA==",
-        // b"MDAwMDA2QW5kIGEgaGlnaCBoYXQgd2l0aCBhIHNvdXBlZCB1cCB0ZW1wbw==",
-        // b"MDAwMDA3SSdtIG9uIGEgcm9sbCwgaXQncyB0aW1lIHRvIGdvIHNvbG8=",
-        // b"MDAwMDA4b2xsaW4nIGluIG15IGZpdmUgcG9pbnQgb2g=",
-        // b"MDAwMDA5aXRoIG15IHJhZy10b3AgZG93biBzbyBteSBoYWlyIGNhbiBibG93",
+        b"MDAwMDAxV2l0aCB0aGUgYmFzcyBraWNrZWQgaW4gYW5kIHRoZSBWZWdhJ3MgYXJlIHB1bXBpbic=",
+        b"MDAwMDAyUXVpY2sgdG8gdGhlIHBvaW50LCB0byB0aGUgcG9pbnQsIG5vIGZha2luZw==",
+        b"MDAwMDAzQ29va2luZyBNQydzIGxpa2UgYSBwb3VuZCBvZiBiYWNvbg==",
+        b"MDAwMDA0QnVybmluZyAnZW0sIGlmIHlvdSBhaW4ndCBxdWljayBhbmQgbmltYmxl",
+        b"MDAwMDA1SSBnbyBjcmF6eSB3aGVuIEkgaGVhciBhIGN5bWJhbA==",
+        b"MDAwMDA2QW5kIGEgaGlnaCBoYXQgd2l0aCBhIHNvdXBlZCB1cCB0ZW1wbw==",
+        b"MDAwMDA3SSdtIG9uIGEgcm9sbCwgaXQncyB0aW1lIHRvIGdvIHNvbG8=",
+        b"MDAwMDA4b2xsaW4nIGluIG15IGZpdmUgcG9pbnQgb2g=",
+        b"MDAwMDA5aXRoIG15IHJhZy10b3AgZG93biBzbyBteSBoYWlyIGNhbiBibG93",
     ];
 
     use rand::seq::SliceRandom;
