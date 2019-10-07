@@ -79,6 +79,22 @@ pub fn encrypt_aes_cbc(plaintext: &[u8], key: &[u8], iv: &[u8]) -> Vec<u8> {
     ciphertext
 }
 
+pub fn decrypt_aes_ctr(ciphertext: &[u8], key: &[u8]) -> Vec<u8> {
+    let mut plaintext = Vec::new();
+    let mut counter_block = vec![0; 16];
+
+    for block in ciphertext.chunks(16) {
+        let keystream = encrypt_aes_ecb_no_padding(&counter_block, key);
+        let keystream = &keystream[..block.len()];
+        let block_plaintext = crate::xor::xor_bytes(&keystream, &block);
+        plaintext.extend_from_slice(&block_plaintext);
+
+        counter_block[8] += 1;
+    }
+
+    plaintext
+}
+
 pub fn count_repetitions(bytes: &[u8]) -> u32 {
     // Block size is 128 bits (16 bytes)
     let mut freq = HashMap::new();
@@ -252,3 +268,20 @@ fn test_encrypt_decrypt_aes_cbc() {
     assert_eq!(decrypted, plaintext);
 }
 
+#[test]
+fn test_decrypt_aes_ctr() {
+    let ciphertext = crate::base64::decode(b"L77na/nrFsKvynd6HzOoG7GHTLXsTVu9qvY/2syLXzhPweyyMTJULu/6/kXX0KSvoOLSFQ==");
+    let plaintext = decrypt_aes_ctr(&ciphertext, b"YELLOW SUBMARINE");
+    let plaintext_str = String::from_utf8_lossy(&plaintext);
+
+    assert_eq!(plaintext_str, "Yo, VIP Let\'s kick it Ice, Ice, baby Ice, Ice, baby ");
+}
+
+#[test]
+fn test_encrypt_aes_ctr() {
+    let plaintext: &[u8] = b"Yo, VIP Let\'s kick it Ice, Ice, baby Ice, Ice, baby ";
+    let expected_ciphertext = crate::base64::decode(b"L77na/nrFsKvynd6HzOoG7GHTLXsTVu9qvY/2syLXzhPweyyMTJULu/6/kXX0KSvoOLSFQ==");
+    let ciphertext = decrypt_aes_ctr(plaintext, b"YELLOW SUBMARINE");
+
+    assert_eq!(ciphertext, expected_ciphertext);
+}
