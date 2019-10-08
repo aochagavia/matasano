@@ -8,6 +8,7 @@ mod challenge13;
 mod challenge14;
 mod challenge16;
 mod challenge17;
+mod challenge19;
 mod hamming_distance;
 mod histogram;
 mod ordf32;
@@ -18,4 +19,5 @@ mod xor;
 
 fn main() {
     // aes::break_aes_ecb();
+    challenge19::crack_things();
 }

@@ -55,7 +55,7 @@ fn decode_xor_bytes(bytes: &[u8], key: u8) -> Vec<u8> {
     bytes.into_iter().map(|x| x ^ key).collect()
 }
 
-pub fn decrypt_xor_ecb(bytes: &[u8], keysize: usize) -> Option<String> {
+pub fn decrypt_xor_ecb(bytes: &[u8], keysize: usize) -> Option<Vec<u8>> {
     // Transpose blocks
     let mut transposed_blocks = vec![Vec::new(); keysize];
     for (byte_no, &byte) in bytes.iter().enumerate() {
@@ -64,7 +64,7 @@ pub fn decrypt_xor_ecb(bytes: &[u8], keysize: usize) -> Option<String> {
     }
 
     // Decrypt each transposed block
-    transposed_blocks.iter().map(|block| infer_xor_key_english(block).map(|key| key as char)).collect()
+    transposed_blocks.iter().map(|block| infer_xor_key_english(block)).collect()
 }
 
 #[cfg(test)]
@@ -129,7 +129,7 @@ mod test {
 
         for inferred_length in infer_key_lengths(&ciphertext) {
             if let Some(decrypted_key) = decrypt_xor_ecb(&ciphertext, inferred_length) {
-                assert_eq!(decrypted_key, "Terminator x: Bring the noise");
+                assert_eq!(decrypted_key, b"Terminator x: Bring the noise");
             }
         }
     }
@@ -144,8 +144,8 @@ mod test {
 
     #[test]
     fn test_decrypt_xor_ecb() {
-        let key = "secretkey";
-        let ciphertext = xor_ecb(PLAINTEXT, key.as_bytes());
+        let key = b"secretkey";
+        let ciphertext = xor_ecb(PLAINTEXT, key);
         let keysize = key.len();
         let decrypted_key = decrypt_xor_ecb(&ciphertext, keysize).unwrap();
         assert_eq!(decrypted_key, key);
