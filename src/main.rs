@@ -11,6 +11,7 @@ mod challenge17;
 mod challenge19;
 mod hamming_distance;
 mod histogram;
+mod mersenne_twister_rng;
 mod ordf32;
 mod pkcs7;
 mod profile;
