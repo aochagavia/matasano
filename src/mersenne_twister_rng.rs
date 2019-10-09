@@ -69,3 +69,25 @@ fn test_rng_seed_works() {
     assert_eq!(rng.next(), 1608637542);
     assert_eq!(rng.next() as i32, -873841229);
 }
+
+#[test]
+fn test_rng_crack_seed() {
+    let seed = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs() as u32;
+    let mut rng = Rng::new(seed);
+    let x = rng.next();
+
+    // Simulate passage of 30 seconds
+    let now = seed + 30;
+
+    // Attempt to brute force this thing (limit to 1000 tries)
+    let mut found = false;
+    for test_seed in (0..=now).rev().take(1_000) {
+        let mut test_rng = Rng::new(test_seed);
+        if test_rng.next() == x {
+            found = true;
+            assert_eq!(seed, test_seed);
+        }
+    }
+
+    assert!(found);
+}
